@@ -15,15 +15,16 @@ export default function Counter() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  // Initial fetch of the counter value in the component mount
+  // Initial fetch
   useEffect(() => {
     getCounter()
       .then((data) => {
         setCounter({ value: data.value, last_updated: String(data.last_updated) });
-        // If it was reset, inform the user
+
         const lastUpdated = new Date(data.last_updated);
         const now = new Date();
         const diffMinutes = (now.getTime() - lastUpdated.getTime()) / (1000 * 60);
+
         if (diffMinutes < 1 && data.value === 0) {
           setInfo('The counter has automatically been reset for inactivity.');
         }
@@ -42,16 +43,15 @@ export default function Counter() {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'counter',
+          table: 'Counter',
         },
         (payload) => {
-          // Updates the counter value automatically
           setCounter({
             value: payload.new.value,
             last_updated: String(payload.new.last_updated),
           });
 
-          // If it was a reset due to inactivity
+          // Solo mostrar si NO fue por decremento manual
           const lastUpdated = new Date(payload.new.last_updated);
           const now = new Date();
           const diffMinutes = (now.getTime() - lastUpdated.getTime()) / (1000 * 60);
@@ -65,7 +65,7 @@ export default function Counter() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [counter]); // Only subscribe if there is a counter
+  }, [counter]);
 
   // Clear info message after 5 seconds
   useEffect(() => {
@@ -79,6 +79,7 @@ export default function Counter() {
   const handleUpdate = async (action: 'inc' | 'dec') => {
     setError(null);
     setInfo(null);
+
     startTransition(() => {
       const actionFn = action === 'inc' ? incrementCounter : decrementCounter;
       actionFn()
