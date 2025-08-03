@@ -69,6 +69,25 @@ The key to this project is the clear separation of responsibilities between the 
 - **Cron Job (`pg_cron` Extension):**  
   Supabase's `pg_cron` extension is used to schedule tasks within the database. Every minute, a cron job triggers the Edge Function by making an HTTP request via the `pg_net` extension. This job contains no business logic—it acts solely as a trigger—ensuring the reset logic is executed reliably and asynchronously in the background.
 
+- **Realtime update:**  
+  The app uses Supabase Realtime to automatically synchronize the counter value across all open tabs.  
+  When the counter is updated (either by user action, cron job, or edge function), the event is broadcast in real-time to all connected clients via the WebSocket channel provided by Supabase.  
+  To achieve this:
+  - The **Realtime option** was enabled on the `counter` table from the Supabase console.
+  - A **Supabase client was used in the frontend**, it is created at `src/lib/supabaseClient.ts` using `@supabase/supabase-js`. The necessary environment variables (`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`) must be configured in the local environment.
+  - **All subscription logic is handled in the frontend**, using this client. The React component subscribes to table events and updates the counter in real-time when changes are detected.
+
+  _This way, the counter is automatically reflected in all tabs without needing to reload the page._
+
+- **Security Considerations:**
+  - A policy Row Level Security (RLS) was configured on the table to only allow SELECT public queries:
+    ```sql
+    ALTER TABLE public.counter ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY "Public read access" ON public.counter
+    FOR SELECT
+    USING (true);
+    ```
+
 ---
 
 This architecture is **efficient, scalable, and robust**:  
@@ -87,7 +106,7 @@ This is the core logic that runs on Supabase servers every time the Cron Job inv
 ```typescript
 import { createClient } from 'jsr:@supabase/supabase-js@^2';
 
-Deno.serve(async (req)=>{
+Deno.serve(async (req)=> {
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
