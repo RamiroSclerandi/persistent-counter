@@ -59,7 +59,7 @@ export default function Counter() {
   if (!counter) {
     return (
       <div className="flex flex-col items-center gap-4">
-        <div className="animate-pulse text-2xl">Cargando contador...</div>
+        <div className="animate-pulse text-2xl">Loading counter...</div>
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
       </div>
     );
@@ -87,12 +87,12 @@ export default function Counter() {
       {isPending && (
         <div className="flex items-center gap-2 text-gray-500">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
-          Actualizando…
+          Updating…
         </div>
       )}
       {info && <div className="text-green-600">{info}</div>}
       <div className="text-sm text-gray-500">
-        Última actualización: {new Date(counter.last_updated).toLocaleString()}
+        Last update: {new Date(counter.last_updated).toLocaleString()}
       </div>
     </div>
   );
