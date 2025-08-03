@@ -24,10 +24,10 @@ export default function Counter() {
         const now = new Date();
         const diffMinutes = (now.getTime() - lastUpdated.getTime()) / (1000 * 60);
         if (diffMinutes < 1 && data.value === 0) {
-          setInfo('El contador se reinició automáticamente por inactividad.');
+          setInfo('The counter has automatically been reset for inactivity.');
         }
       })
-      .catch(() => setError('Error cargando el contador'));
+      .catch(() => setError('Error loading counter'));
   }, []);
 
   // Clear info message after 5 seconds
@@ -47,10 +47,10 @@ export default function Counter() {
       actionFn()
         .then((data) => {
           setCounter({ value: data.value, last_updated: String(data.last_updated) });
-          setInfo('¡Contador actualizado!');
+          setInfo('Counter updated!');
         })
         .catch(() => setError(
-          action === 'inc' ? 'Error al incrementar' : 'Error al decrementar'
+          action === 'inc' ? 'Error incrementing' : 'Error decrementing'
         ));
     });
   };

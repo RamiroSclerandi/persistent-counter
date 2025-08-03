@@ -1,19 +1,19 @@
-# Persistent Counter con Reinicio Automático
+# Persistent Counter with Automatic Reset
 
-Una aplicación web creada con **Next.js 15**, **TypeScript**, **Supabase** y **Prisma ORM** que implementa un contador global, persistente y con un mecanismo de reinicio automático basado en inactividad, orquestado por un **Cron Job** y una **Edge Function** de Supabase.
+A web application built with **Next.js 15**, **TypeScript**, **Supabase**, and **Prisma ORM** that implements a global, persistent counter with an automatic reset mechanism based on inactivity, orchestrated by a **Cron Job** and a **Supabase Edge Function**.
 
-## 🚀 Descripción del Proyecto
+## 🚀 Project description
 
-Esta aplicación demuestra una arquitectura robusta para manejar tareas programadas y lógica de servidor desacoplada del frontend. El proyecto consiste en:
+This application demonstrates a robust architecture for handling scheduled tasks and server logic decoupled from the frontend. The project consists of:
 
-1.  **Un Frontend Interactivo (Next.js):** Permite a cualquier usuario ver e incrementar el valor de un contador.
-2.  **Una Base de Datos (Supabase/PostgreSQL):** Almacena de forma persistente el estado del contador.
-3.  **Una Tarea Programada (Cron Job):** Un trabajo en la base de datos que se ejecuta cada minuto para invocar una función de servidor.
-4.  **Lógica de Servidor (Edge Function):** Una función que se ejecuta con Deno que contiene la lógica para verificar si han pasado más de 20 minutos desde la última actualización y, de ser así, reiniciar el contador a `0`.
+1.  **An Interactive Frontend (Next.js):** Allows any user to view and increment the value of a counter.
+2.  **A Database (Supabase/PostgreSQL):** Persistently stores the state of the counter.
+3.  **A Scheduled Task (Cron Job):** A database job that runs every minute to invoke a server function.
+4.  **Server Logic (Edge Function):** A function running on Deno that contains the logic to check if more than 20 minutes have passed since the last update and, if so, resets the counter to `0`.
 
-Este enfoque garantiza que el reinicio ocurra de forma fiable en el backend, independientemente de si hay usuarios activos en la página.
+This approach ensures that the reset occurs reliably in the backend, regardless of whether there are active users on the page.
 
-## 📂 Estructura del Proyecto
+## 📂 Project Structure
 
 ```
 persistent-counter/
@@ -37,25 +37,52 @@ persistent-counter/
   .gitignore
 ```
 
-## ✨ Arquitectura y Decisiones Técnicas
+## ✨ Architecture and Technical Decisions
 
-La clave de este proyecto es la separación de responsabilidades entre el frontend y el backend, utilizando las herramientas nativas de Supabase para la automatización.
+The key to this project is the clear separation of responsibilities between the frontend and backend, leveraging modern frameworks and Supabase's native automation tools for reliability and scalability.
 
-1.  **Frontend (Next.js 15 en Vercel):**
-    *   Construido con **Server Components** para la carga inicial de datos y **Client Components** para la interactividad.
-    *   Usa **Server Actions** para modificar el contador, garantizando que las escrituras se validen en el servidor.
-    *   Se conecta a la base de datos a través de **Prisma ORM** para obtener el valor actual del contador de forma segura y tipada.
+### 1. **Frontend (Next.js 15 on Vercel):**
 
-2.  **Backend (Supabase):**
-    *   **Base de Datos PostgreSQL:** El corazón del sistema, donde se guarda el único registro del `Counter`.
-    *   **Edge Function (`reset-counter`):** Una función serverless escrita en Deno/TypeScript. Su única responsabilidad es leer el estado del contador, calcular el tiempo de inactividad y reiniciarlo si se cumple la condición (> 20 min).
-    *   **Cron Job (`pg_cron`):** Se utiliza la extensión de PostgreSQL `pg_cron` para programar una tarea que se ejecuta cada minuto. Esta tarea no contiene lógica, simplemente realiza una petición HTTP (utilizando `pg_net`) para invocar la Edge Function, actuando como un disparador (trigger).
+- **Server Components for Initial Data Loading:**  
+  The core UI is built using Next.js 15's Server Components, which allow data fetching and rendering to happen on the server, resulting in fast initial loads and improved SEO. These components fetch the current counter value directly from the backend on every page request, ensuring that users always see the latest, persistent state.
 
-Este diseño es **eficiente y escalable**: la lógica de reinicio no sobrecarga las peticiones del usuario y la tarea de verificación se ejecuta de forma asíncrona y constante.
+- **Client Components for Interactivity:**  
+  Interactive elements, such as the buttons to increment or decrement the counter, are implemented as Client Components. This enables real-time updates and responsive feedback to user actions, while maintaining a clean separation between static and interactive UI logic.
 
-### Código de la Edge Function (`reset-counter`)
+- **Server Actions for Secure State Changes:**  
+  All mutations (increment and decrement operations) are handled via Next.js Server Actions. This ensures that any change to the counter is processed and validated on the backend, preventing unauthorized manipulations from the client side and guaranteeing data integrity.
 
-Esta es la lógica central que se ejecuta en los servidores de Supabase cada vez que el Cron Job la invoca.
+- **Prisma ORM for Type-Safe Database Access:**  
+  The frontend connects to the Supabase Postgres database using Prisma ORM. Prisma provides a robust, type-safe interface for querying and updating the database, reducing the risk of errors and improving developer productivity.
+
+- **PrismaClient Singleton Pattern for Connection Management:**  
+  To ensure consistent and persistent database access, a singleton pattern is implemented when instantiating `PrismaClient`. In development, Next.js hot-reloads modules frequently, which can unintentionally spawn multiple Prisma instances and exhaust database connections. By storing the PrismaClient instance globally, only a single instance is reused across all requests, preventing connection leaks and ensuring that data remains reliable. This approach is crucial for maintaining stability and optimal resource usage in both development and production environments.
+
+### 2. **Backend (Supabase):**
+
+- **PostgreSQL Database:**  
+  The foundation of the system is a single table in Supabase's hosted PostgreSQL database, which contains the persistent `Counter` record. This guarantees that the counter's value is globally shared and always available, regardless of user session or device.
+
+- **Edge Function (`reset-counter`):**  
+  The automatic reset logic is encapsulated in a serverless Edge Function written in Deno/TypeScript. This function runs independently of the frontend, checking the timestamp of the last update. If more than 20 minutes of inactivity have passed, it resets the counter to zero. This ensures that stale data is purged automatically without requiring user interaction or scheduled API calls from the frontend.
+
+- **Cron Job (`pg_cron` Extension):**  
+  Supabase's `pg_cron` extension is used to schedule tasks within the database. Every minute, a cron job triggers the Edge Function by making an HTTP request via the `pg_net` extension. This job contains no business logic—it acts solely as a trigger—ensuring the reset logic is executed reliably and asynchronously in the background.
+
+---
+
+This architecture is **efficient, scalable, and robust**:  
+- The reset logic does not overload user requests or rely on frontend timers.
+- Data persists reliably across sessions and users.
+- Automated background tasks ensure the app remains fresh and correct over time, with minimal manual intervention.
+
+This design is **efficient and scalable**: the reset logic does not overload user requests, and the verification task runs asynchronously and constantly.
+
+---
+
+### Edge Function code (`reset-counter`)
+
+This is the core logic that runs on Supabase servers every time the Cron Job invokes it. The code is as follows:
 
 ```typescript
 import { createClient } from 'jsr:@supabase/supabase-js@^2';
@@ -114,126 +141,126 @@ Deno.serve(async (req)=>{
 });
 ```
 
-## ⚙️ Tutorial End-to-End: Replicar el Proyecto
+## ⚙️ End-to-End Tutorial: Replicate the Project
 
-Sigue estos pasos para levantar una copia completamente funcional de este proyecto desde cero.
+Follow these steps to set up a fully functional copy of this project from scratch.
 
-### Parte 1: Configuración de Supabase (Backend)
+### Part 1: Supabase Setup (Backend)
 
-1.  **Crear un Proyecto en Supabase:**
-    *   Ve a [supabase.com](https://supabase.com), regístrate y crea un nuevo proyecto.
-    *   Guarda la **contraseña de la base de datos** en un lugar seguro. La necesitarás más adelante.
+1.  **Create a Project in Supabase:**
+    *   Go to [supabase.com](https://supabase.com), sign up, and create a new project.
+    *   Save the **database password** in a safe place. You will need it later.
 
-2.  **Crear la Tabla `Counter`:**
-    *   En el dashboard de tu proyecto, ve a `SQL Editor`.
-    *   Crea una nueva consulta y ejecuta el siguiente script para crear la tabla y su único registro:
+2.  **Create the `Counter` Table:**
+    *   In your project dashboard, go to `SQL Editor`.
+    *   Create a new query and run the following script to create the table and its single record:
 
     ```sql
-    -- 1. Crear la tabla Counter
+    -- 1. Create the Counter table
     CREATE TABLE public."Counter" (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       value INT NOT NULL DEFAULT 0,
       last_updated TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    -- 2. Insertar el registro inicial del contador
+    -- 2. Insert the initial counter record
     INSERT INTO public."Counter" (value) VALUES (0);
     ```
 
-3.  **Activar Extensiones para el Cron Job:**
-    Para que Supabase pueda ejecutar tareas programadas, necesitamos activar dos extensiones: cron para la programación y pg_net para realizar llamadas HTTP.
+3.  **Enable Extensions for the Cron Job:**
+    To allow Supabase to run scheduled tasks, you need to enable two extensions: cron for scheduling and pg_net for making HTTP calls.
 
-    -- Método Recomendado (vía Dashboard):
+    -- Recommended Method (via Dashboard):
 
-      En el menú de tu proyecto de Supabase, ve a Database y luego a Extensions.
-      En la barra de búsqueda, escribe cron y haz clic en la extensión.
-      Presiona "Enable extension". Supabase podría pedirte que también actives pg_net como dependencia; acepta si es el caso. Si no lo hizo automáticamente, busca la extensión pg_net en la misma sección y actívala también.
+      In your Supabase project menu, go to Database and then Extensions.
+      In the search bar, type cron and click on the extension.
+      Press "Enable extension". Supabase may ask you to also enable pg_net as a dependency; accept if prompted. If it did not do so automatically, search for the pg_net extension in the same section and enable it as well.
 
-    -- Método Alternativo (vía SQL Editor):
+    -- Alternative Method (via SQL Editor):
 
-    Si prefieres usar SQL, ve a SQL Editor, crea una nueva consulta y ejecuta las siguientes dos líneas, una por una:
+    If you prefer using SQL, go to SQL Editor, create a new query, and run the following two lines, one by one:
 
     ```SQL
     CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
     CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
     ```
 
-4.  **Crear la Edge Function:**
-    La Edge Function contendrá la lógica de reinicio. La crearemos directamente desde el Dashboard.
+4.  **Create the Edge Function:**
+    The Edge Function will contain the reset logic. Create it directly from the Dashboard.
 
-    a) En el menú de la izquierda, haz clic en el ícono del rayo (⚡) para ir a Edge Functions.
-    b) Haz clic en el botón "Create a new function".
-    c) Nombra la función reset-counter y confírmala.
-    d) Se abrirá un editor de código directamente en tu navegador. Borra el contenido de ejemplo y pega el código completo de la Edge Function que se encuentra más arriba en este README.
-    e) Haz clic en "Save and Deploy" en la esquina inferior derecha y espera a que el proceso finalice.
-    f) Una vez desplegada, ve a los detalles de tu función para encontrar su URL de invocación. La necesitarás para el siguiente paso.
+    a) In the left menu, click the lightning icon (⚡) to go to Edge Functions.
+    b) Click the "Create a new function" button.
+    c) Name the function reset-counter and confirm.
+    d) An online code editor will open. Delete the example content and paste the full Edge Function code found earlier in this README.
+    e) Click "Save and Deploy" in the bottom right corner and wait for the process to finish.
+    f) Once deployed, go to your function details to find its invocation URL. You will need it for the next step.
 
 
-5.  **Crear el Cron Job:**
-    Ahora se programa la tarea que llamará a la Edge Function cada minuto.
+5.  **Create the Cron Job:**
+    Now schedule the task that will call the Edge Function every minute.
 
-    a) Volver a la sección Database > Extensions.
+    a) Go back to Database > Extensions.
 
-    b) Buscar y hacer click en la extensión cron que ya activaste.
+    b) Find and click the cron extension you already enabled.
 
-    c) Dentro de la configuración de cron, habrá una pestaña llamada "Jobs". Hacer click en ella.
+    c) In the cron configuration, there will be a tab called "Jobs". Click on it.
 
-    d) Presionar "New job" para abrir el formulario de creación:
+    d) Press "New job" to open the creation form:
 
       - Job name: reset-counter-job
-      - Schedule: * * * * * (esto significa "ejecutar cada minuto").
-      - Command: Pega aquí el siguiente código SQL.
+      - Schedule: * * * * * (this means "run every minute").
+      - Command: Paste the following SQL code here.
         ```SQL
         SELECT net.http_post(
           url:='URL_EDGE_FUNCTION',
           headers:='{"Content-Type": "application/json", "Authorization": "Bearer SUPABASE_SERVICE_ROLE_KEY"}'::jsonb
         )```
 
-    e) ¡Importante! Antes de guardar, hay que reemplazar los dos placeholders en el código:
+    e) Important! Before saving, replace the two placeholders in the code:
 
-      - `URL_EDGE_FUNCTION`: Pegar la URL obtenida en el paso anterior.
-      - `SUPABASE_SERVICE_ROLE_KEY`: Se obtiene en Project Settings > API.
+      - `URL_EDGE_FUNCTION`: Paste the URL obtained in the previous step.
+      - `SUPABASE_SERVICE_ROLE_KEY`: Found in Project Settings > API.
 
-    f) Con los valores correctos, hacer clic en "**Create**" para guardar y activar el job. ¡Ya está funcionando! Puedes verificar su ejecución en los logs de la Edge Function.
+    f) With the correct values, click "**Create**" to save and activate the job. It's now running! You can check its execution in the Edge Function logs.
 
-### Parte 2: Configuración del Frontend (Next.js)
+### Part 2: Frontend Setup (Next.js)
 
-1.  **Clonar el Repositorio:**
+1.  **Clone the Repository:**
     ```bash
     git clone https://github.com/RamiroSclerandi/persistent-counter.git
     cd persistent-counter
     ```
 
-2.  **Instalar Dependencias:**
+2.  **Install Dependencies:**
     ```bash
     pnpm install
     ```
 
-3.  **Configurar Variables de Entorno:**
-    *   Busca el archivo `.env.sample` en la raíz del proyecto.
-    *   Renómbralo a `.env`.
-    *   Rellena las variables con las credenciales de **tu proyecto de Supabase**:
-        *   `DATABASE_URL`: La encuentras en `Project Settings` > `Database` > `Connection string` (URI). Usa la contraseña que guardaste.
-        *   `DIRECT_URL`: La encuentras en el mismo lugar.
-        *   `SUPABASE_URL` y `SUPABASE_ANON_KEY`: Las encuentras en `Project Settings` > `API`.
+3.  **Configure Environment Variables:**
+    *   Find the `.env.sample` file in the project root.
+    *   Rename it to `.env`.
+    *   Fill in the variables with your **Supabase project** credentials:
+        *   `DATABASE_URL`: Found in `Project Settings` > `Database` > `Connection string` (URI). Use the password you saved.
+        *   `DIRECT_URL`: Found in the same place.
+        *   `SUPABASE_URL` and `SUPABASE_ANON_KEY`: Found in `Project Settings` > `API`.
 
-4.  **Sincronizar Prisma:**
-    *   Asegúrate de que tu `schema.prisma` coincida con la tabla de Supabase. Luego, ejecuta:
+4.  **Sync Prisma:**
+    *   Make sure your `schema.prisma` matches the Supabase table. Then run:
     ```bash
     pnpm prisma generate
     ```
 
-5.  **Ejecutar la App:**
+5.  **Run the App:**
     ```bash
     pnpm run dev
     ```
-    ¡Listo! Abre `http://localhost:3000` y deberías ver el contador funcionando, conectado a tu propio backend de Supabase.
+    Done! Open `http://localhost:3000` and you should see the counter working, connected to your own Supabase backend.
 
-## 📜 Licencia
+## 📜 License
 
 MIT
 
-## 📞 Contacto
+## 📞 Contact
 
-Desarrollado por Ramiro Sclerandi.  
-Para dudas o mejoras contacta por GitHub.
+Developed by Ramiro Sclerandi.  
+For questions or improvements, contact via GitHub.
