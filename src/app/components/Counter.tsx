@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { getCounter, incrementCounter, decrementCounter } from '../actions/counter';
+import { supabase } from '../../lib/supabaseClient';
 
 type CounterType = {
   value: number;
@@ -29,6 +30,42 @@ export default function Counter() {
       })
       .catch(() => setError('Error loading counter'));
   }, []);
+
+  // Supabase Realtime subscription
+  useEffect(() => {
+    if (!counter) return;
+
+    const channel = supabase
+      .channel('realtime-counter')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'counter',
+        },
+        (payload) => {
+          // Updates the counter value automatically
+          setCounter({
+            value: payload.new.value,
+            last_updated: String(payload.new.last_updated),
+          });
+
+          // If it was a reset due to inactivity
+          const lastUpdated = new Date(payload.new.last_updated);
+          const now = new Date();
+          const diffMinutes = (now.getTime() - lastUpdated.getTime()) / (1000 * 60);
+          if (diffMinutes < 1 && payload.new.value === 0) {
+            setInfo('The counter has automatically been reset for inactivity.');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [counter]); // Only subscribe if there is a counter
 
   // Clear info message after 5 seconds
   useEffect(() => {
