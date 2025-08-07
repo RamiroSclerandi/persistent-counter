@@ -1,41 +1,25 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { getCounter, incrementCounter, decrementCounter } from '../actions/counter';
+import { incrementCounter, decrementCounter } from '../actions/counter';
 import { supabase } from '../../lib/supabaseClient';
 
-type CounterType = {
-  value: number;
-  last_updated: string;
-};
+type CounterProps = {
+  readonly initialValue: number;
+  readonly lastUpdated: Date;
+}
 
-export default function Counter() {
-  const [counter, setCounter] = useState<CounterType | null>(null);
+export default function Counter({ initialValue, lastUpdated }: CounterProps) {
+  const [counter, setCounter] = useState<{ value: number; last_updated: Date }>({
+    value: initialValue,
+    last_updated: lastUpdated,
+  });
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  // Initial fetch
-  useEffect(() => {
-    getCounter()
-      .then((data) => {
-        setCounter({ value: data.value, last_updated: String(data.last_updated) });
-
-        const lastUpdated = new Date(data.last_updated);
-        const now = new Date();
-        const diffMinutes = (now.getTime() - lastUpdated.getTime()) / (1000 * 60);
-
-        if (diffMinutes < 1 && data.value === 0) {
-          setInfo('The counter has automatically been reset for inactivity.');
-        }
-      })
-      .catch(() => setError('Error loading counter'));
-  }, []);
-
   // Supabase Realtime subscription
   useEffect(() => {
-    if (!counter) return;
-
     const channel = supabase
       .channel('realtime-counter')
       .on(
@@ -48,10 +32,10 @@ export default function Counter() {
         (payload) => {
           setCounter({
             value: payload.new.value,
-            last_updated: String(payload.new.last_updated),
+            last_updated: new Date(payload.new.last_updated),
           });
 
-          // Solo mostrar si NO fue por decremento manual
+          // Mostrar mensaje solo si fue reseteado por inactividad
           const lastUpdated = new Date(payload.new.last_updated);
           const now = new Date();
           const diffMinutes = (now.getTime() - lastUpdated.getTime()) / (1000 * 60);
@@ -65,7 +49,7 @@ export default function Counter() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [counter]);
+  }, []);
 
   // Clear info message after 5 seconds
   useEffect(() => {
@@ -84,24 +68,18 @@ export default function Counter() {
       const actionFn = action === 'inc' ? incrementCounter : decrementCounter;
       actionFn()
         .then((data) => {
-          setCounter({ value: data.value, last_updated: String(data.last_updated) });
+          setCounter({ value: data.value, last_updated: new Date(data.last_updated) });
           setInfo('Counter updated!');
         })
-        .catch(() => setError(
-          action === 'inc' ? 'Error incrementing' : 'Error decrementing'
-        ));
+        .catch(() =>
+          setError(
+            action === 'inc' ? 'Error incrementing' : 'Error decrementing'
+          )
+        );
     });
   };
 
   if (error) return <div className="text-red-600">{error}</div>;
-  if (!counter) {
-    return (
-      <div className="flex flex-col items-center gap-4">
-        <div className="animate-pulse text-2xl">Loading counter...</div>
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -130,7 +108,7 @@ export default function Counter() {
       )}
       {info && <div className="text-green-600">{info}</div>}
       <div className="text-sm text-gray-500">
-        Last update: {new Date(counter.last_updated).toLocaleString()}
+        Last update: {counter.last_updated instanceof Date ? counter.last_updated.toLocaleString() : counter.last_updated}
       </div>
     </div>
   );

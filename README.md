@@ -1,17 +1,35 @@
 # Persistent Counter with Automatic Reset
 
-A web application built with **Next.js 15**, **TypeScript**, **Supabase**, and **Prisma ORM** that implements a global, persistent counter with an automatic reset mechanism based on inactivity, orchestrated by a **Cron Job** and a **Supabase Edge Function**.
+A web application built with **Next.js 15**, **TypeScript**, **Supabase**, and **Prisma ORM** that implements a global, persistent counter with an automatic reset mechanism based on inactivity, orchestrated by a decoupled mechanism using **Redis** and a background **Worker**.
 
 ## 🚀 Project description
 
-This application demonstrates a robust architecture for handling scheduled tasks and server logic decoupled from the frontend. The project consists of:
+This application demonstrates a robust architecture for handling scheduled tasks and server logic decoupling the backend from the frontend.
+
+The project consists of:
 
 1.  **An Interactive Frontend (Next.js):** Allows any user to view and increment the value of a counter.
-2.  **A Database (Supabase/PostgreSQL):** Persistently stores the state of the counter.
-3.  **A Scheduled Task (Cron Job):** A database job that runs every minute to invoke a server function.
-4.  **Server Logic (Edge Function):** A function running on Deno that contains the logic to check if more than 20 minutes have passed since the last update and, if so, resets the counter to `0`.
+    - The counter is displayed in real-time, and users can increment or decrement its value.
+    - It does not go to negative values.
+    - The counter is globally shared, meaning all users see the same value.
+    - The frontend uses Next.js Server Components for initial data loading and Client Components for interactivity.
+    - All mutations are handled via Next.js Server Actions, ensuring secure state changes.
 
-This approach ensures that the reset occurs reliably in the backend, regardless of whether there are active users on the page.
+2.  **A Database (Supabase/PostgreSQL):** Persistently stores the state of the counter.
+    - The counter is stored in a single table with a record that contains the current value and the timestamp of the last update.
+    - The app uses Supabase Realtime to automatically synchronize the counter value across all open tabs.
+
+3. **Prisma ORM:** Is used for type-safe database access, ensuring reliable and efficient queries.
+    - PrismaClient is instantiated as a singleton to prevent connection leaks and ensure consistent access to the database.
+
+4.  **A Background Worker (Redis + Railway):** Monitors the counter and resets it automatically if it has not been updated in the last 20 minutes.
+    - The worker uses Redis to set a key that expires after 20 minutes, indicating the counter has been reset.
+    - It listens for expiration events on the Redis channel and triggers a reset notification to the backend.
+
+5. **Server actions for reset logic:**  
+   The reset logic is implemented in a route handler that is invoked by the background worker and resets it to zero if more than 20 minutes have passed since the last update.
+
+This approach ensures that the reset occurs reliably in the backend, regardless of whether there are active users on the page or not.
 
 ## 📂 Project Structure
 
@@ -35,13 +53,19 @@ persistent-counter/
   package.json
   README.md
   .gitignore
+
+persistent-counter-worker/
+  index.js
+  .env.example
+  package.json
+  README.md
 ```
 
 ## ✨ Architecture and Technical Decisions
 
 The key to this project is the clear separation of responsibilities between the frontend and backend, leveraging modern frameworks and Supabase's native automation tools for reliability and scalability.
 
-### 1. **Frontend (Next.js 15 on Vercel):**
+### 1. **Frontend:**
 
 - **Server Components for Initial Data Loading:**  
   The core UI is built using Next.js 15's Server Components, which allow data fetching and rendering to happen on the server, resulting in fast initial loads and improved SEO. These components fetch the current counter value directly from the backend on every page request, ensuring that users always see the latest, persistent state.
@@ -58,16 +82,10 @@ The key to this project is the clear separation of responsibilities between the 
 - **PrismaClient Singleton Pattern for Connection Management:**  
   To ensure consistent and persistent database access, a singleton pattern is implemented when instantiating `PrismaClient`. In development, Next.js hot-reloads modules frequently, which can unintentionally spawn multiple Prisma instances and exhaust database connections. By storing the PrismaClient instance globally, only a single instance is reused across all requests, preventing connection leaks and ensuring that data remains reliable. This approach is crucial for maintaining stability and optimal resource usage in both development and production environments.
 
-### 2. **Backend (Supabase):**
+### 2. **Database:**
 
-- **PostgreSQL Database:**  
+- **PostgreSQL Database on Supabase:**  
   The foundation of the system is a single table in Supabase's hosted PostgreSQL database, which contains the persistent `Counter` record. This guarantees that the counter's value is globally shared and always available, regardless of user session or device.
-
-- **Edge Function (`reset-counter`):**  
-  The automatic reset logic is encapsulated in a serverless Edge Function written in Deno/TypeScript. This function runs independently of the frontend, checking the timestamp of the last update. If more than 20 minutes of inactivity have passed, it resets the counter to zero. This ensures that stale data is purged automatically without requiring user interaction or scheduled API calls from the frontend.
-
-- **Cron Job (`pg_cron` Extension):**  
-  Supabase's `pg_cron` extension is used to schedule tasks within the database. Every minute, a cron job triggers the Edge Function by making an HTTP request via the `pg_net` extension. This job contains no business logic—it acts solely as a trigger—ensuring the reset logic is executed reliably and asynchronously in the background.
 
 - **Realtime update:**  
   The app uses Supabase Realtime to automatically synchronize the counter value across all open tabs.  
@@ -77,10 +95,16 @@ The key to this project is the clear separation of responsibilities between the 
   - A **Supabase client was used in the frontend**, it is created at `src/lib/supabaseClient.ts` using `@supabase/supabase-js`. The necessary environment variables (`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`) must be configured in the local environment.
   - **All subscription logic is handled in the frontend**, using this client. The React component subscribes to table events and updates the counter in real-time when changes are detected.
 
-  _This way, the counter is automatically reflected in all tabs without needing to reload the page._
+- **Redis for reset logic:**  
+    A Redis key is set to expire after 20 minutes, indicating that the counter has been reset.
+
+- **A background worker running with Node.js:**  
+    A background worker listens for expiration events on the Redis channel. When the key expires, it triggers a reset of the counter by calling a backend endpoint that is responsible for resetting the counter to zero.
+
+  _This way, the counter is always in the correct value in both frontend and database._
 
 - **Security Considerations:**
-  - A policy Row Level Security (RLS) was configured on the table to only allow SELECT public queries:
+  A policy Row Level Security (RLS) was configured on the table to only allow SELECT public queries:
     ```sql
     ALTER TABLE public.counter ENABLE ROW LEVEL SECURITY;
     CREATE POLICY "Public read access" ON public.counter
@@ -95,70 +119,7 @@ This architecture is **efficient, scalable, and robust**:
 - Data persists reliably across sessions and users.
 - Automated background tasks ensure the app remains fresh and correct over time, with minimal manual intervention.
 
-This design is **efficient and scalable**: the reset logic does not overload user requests, and the verification task runs asynchronously and constantly.
-
 ---
-
-### Edge Function code (`reset-counter`)
-
-This is the core logic that runs on Supabase servers every time the Cron Job invokes it. The code is as follows:
-
-```typescript
-import { createClient } from 'jsr:@supabase/supabase-js@^2';
-
-Deno.serve(async (req)=> {
-  try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
-
-    // 1. Obtain the current counter
-    const { data: counter, error: fetchError } = await supabaseClient
-      .from('Counter')
-      .select('id, value, last_updated')
-      .single();
-
-    if (fetchError) {
-      if (fetchError.code === 'PGRST116') { // No rows found
-        console.log('Counter table is empty. No action needed.');
-        return new Response('No counter found.', { status: 200 });
-      }
-      throw fetchError;
-    }
-
-    // 2. Calculate the time difference
-    const now = new Date();
-    const lastUpdated = new Date(counter.last_updated);
-    const diffMinutes = (now.getTime() - lastUpdated.getTime()) / (1000 * 60);
-
-    // 3. Reset logic
-    if (diffMinutes > 20) {
-      if (counter.value === 0) {
-        console.log(`No reset needed: counter is already 0. Last updated ${diffMinutes.toFixed(2)}m ago.`);
-        return new Response(JSON.stringify({ message: 'No reset needed, counter already zero.' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-
-      console.log(`Resetting counter. Last updated ${diffMinutes.toFixed(2)}m ago.`);
-      const { error: updateError } = await supabaseClient
-        .from('Counter')
-        .update({ value: 0, last_updated: now.toISOString() })
-        .eq('id', counter.id);
-
-      if (updateError) throw updateError;
-
-      return new Response(JSON.stringify({ message: 'Counter reset successfully.' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    }
-
-    console.log(`No reset needed. Last updated ${diffMinutes.toFixed(2)}m ago.`);
-    return new Response(JSON.stringify({ message: 'No reset needed.' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-
-  } catch (err) {
-    console.error('Error in Edge Function:', err);
-    return new Response(err.message, { status: 500 });
-  }
-});
-```
 
 ## ⚙️ End-to-End Tutorial: Replicate the Project
 
@@ -186,63 +147,7 @@ Follow these steps to set up a fully functional copy of this project from scratc
     INSERT INTO public."Counter" (value) VALUES (0);
     ```
 
-3.  **Enable Extensions for the Cron Job:**
-    To allow Supabase to run scheduled tasks, you need to enable two extensions: cron for scheduling and pg_net for making HTTP calls.
-
-    -- Recommended Method (via Dashboard):
-
-      In your Supabase project menu, go to Database and then Extensions.
-      In the search bar, type cron and click on the extension.
-      Press "Enable extension". Supabase may ask you to also enable pg_net as a dependency; accept if prompted. If it did not do so automatically, search for the pg_net extension in the same section and enable it as well.
-
-    -- Alternative Method (via SQL Editor):
-
-    If you prefer using SQL, go to SQL Editor, create a new query, and run the following two lines, one by one:
-
-    ```SQL
-    CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
-    CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
-    ```
-
-4.  **Create the Edge Function:**
-    The Edge Function will contain the reset logic. Create it directly from the Dashboard.
-
-    a) In the left menu, click the lightning icon (⚡) to go to Edge Functions.
-    b) Click the "Create a new function" button.
-    c) Name the function reset-counter and confirm.
-    d) An online code editor will open. Delete the example content and paste the full Edge Function code found earlier in this README.
-    e) Click "Save and Deploy" in the bottom right corner and wait for the process to finish.
-    f) Once deployed, go to your function details to find its invocation URL. You will need it for the next step.
-
-
-5.  **Create the Cron Job:**
-    Now schedule the task that will call the Edge Function every minute.
-
-    a) Go back to Database > Extensions.
-
-    b) Find and click the cron extension you already enabled.
-
-    c) In the cron configuration, there will be a tab called "Jobs". Click on it.
-
-    d) Press "New job" to open the creation form:
-
-      - Job name: reset-counter-job
-      - Schedule: * * * * * (this means "run every minute").
-      - Command: Paste the following SQL code here.
-        ```SQL
-        SELECT net.http_post(
-          url:='URL_EDGE_FUNCTION',
-          headers:='{"Content-Type": "application/json", "Authorization": "Bearer SUPABASE_SERVICE_ROLE_KEY"}'::jsonb
-        )```
-
-    e) Important! Before saving, replace the two placeholders in the code:
-
-      - `URL_EDGE_FUNCTION`: Paste the URL obtained in the previous step.
-      - `SUPABASE_SERVICE_ROLE_KEY`: Found in Project Settings > API.
-
-    f) With the correct values, click "**Create**" to save and activate the job. It's now running! You can check its execution in the Edge Function logs.
-
-### Part 2: Frontend Setup (Next.js)
+### Part 2: Whole project Setup (Next.js)
 
 1.  **Clone the Repository:**
     ```bash
@@ -274,6 +179,37 @@ Follow these steps to set up a fully functional copy of this project from scratc
     pnpm run dev
     ```
     Done! Open `http://localhost:3000` and you should see the counter working, connected to your own Supabase backend.
+
+---
+#### Important Note on Reset Logic:
+You have to know that to have the reset logic working, you need to set up this project public on the internet either deploying it on a cloud service such as Vercel for example or use a tunneling service like ngrok (only to test it, not recommende for production).
+This is needed for the background worker (next step) to be able to call the reset endpoint.
+
+---
+
+### Part 3: Background Worker Setup (Redis + Node.js Worker + Railway)
+
+1.  **Create a Railway Project:**
+    *   Go to [railway.app](https://railway.app), sign up, and create a new project.
+    *   Choose the **Redis** template to create a Redis instance.
+    *  Obtain the **Redis host**, **port**, and **password** from the Railway URL.
+
+2.  **Set Up the Node.js Worker:**
+    *  Choose GitHub as the deployment method.
+    *  You must have a GitHub repository with the `persistent-counter-worker` code. [Here is the repository](https://github.com/RamiroSclerandi/persistent-counter-worker).
+
+3. Configure the Environment Variables in Railway. 
+    ```
+    REDIS_HOST=<your_redis_host>
+    REDIS_PORT=<your_redis_port>
+    REDIS_PASSWORD=<your_redis_password>
+    RESET_ENDPOINT_URL=https://your-backend-url.com/api/reset-counter
+    RESET_SECRET=<your_reset_secret>
+    COUNTER_KEY=contador_reset
+    ```
+    *   Replace `<your_redis_host>`, `<your_redis_port>`, and `<your_redis_password>` with the values from your Railway Redis instance previously configured.
+    *   Set `RESET_ENDPOINT_URL` to the URL of your backend reset endpoint (e.g., `https://your-backend-url.com/api/reset-counter`).
+    *   Set `RESET_SECRET` to a secret value that will be used to authenticate the reset request.
 
 ## 📜 License
 

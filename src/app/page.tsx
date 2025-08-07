@@ -1,10 +1,13 @@
+import { getCounter } from './actions/counter';
 import Counter from './components/Counter';
 
-export default function HomePage() {
+export default async function HomePage() {
+  const counter = await getCounter();
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-8">
       <h1 className="text-2xl font-bold mb-6">Persistent counter</h1>
-      <Counter />
+      <Counter initialValue={counter.value} lastUpdated={counter.last_updated}/>
     </main>
   );
 }
