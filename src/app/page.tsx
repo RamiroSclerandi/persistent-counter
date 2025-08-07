@@ -1,6 +1,9 @@
 import { getCounter } from './actions/counter';
 import Counter from './components/Counter';
 
+// No cache for the main page so getCounter() is executed in every request.
+export const revalidate = 0;
+
 export default async function HomePage() {
   const counter = await getCounter();
 
