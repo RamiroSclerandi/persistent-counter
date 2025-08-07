@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     await updateCounterToZero();
     console.log("Counter reset successfully!");
     return NextResponse.json({ success: true }, { status: 200 });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error resetting counter:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error }, { status: 500 });
   }
 }
